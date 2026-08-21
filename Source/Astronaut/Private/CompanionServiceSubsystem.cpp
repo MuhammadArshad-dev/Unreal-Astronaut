@@ -266,9 +266,11 @@ void UCompanionServiceSubsystem::HandleMessage(const FString& MessageString)
     else if (Type == TEXT("audio_chunk"))
     {
         FString Data;
+        int32 SentenceIndex = 0;
+        Json->TryGetNumberField(TEXT("sentence_index"), SentenceIndex);
         if (Json->TryGetStringField(TEXT("data"), Data))
         {
-            PlayReceivedAudio(Data);
+            PlayReceivedAudio(Data, SentenceIndex);
         }
     }
     else if (Type == TEXT("gesture"))
@@ -291,7 +293,7 @@ void UCompanionServiceSubsystem::HandleMessage(const FString& MessageString)
     }
 }
 
-void UCompanionServiceSubsystem::PlayReceivedAudio(const FString& Base64Mp3)
+void UCompanionServiceSubsystem::PlayReceivedAudio(const FString& Base64Mp3, int32 SentenceIndex)
 {
     TArray<uint8> Mp3Bytes;
     if (!FBase64::Decode(Base64Mp3, Mp3Bytes))
@@ -306,6 +308,7 @@ void UCompanionServiceSubsystem::PlayReceivedAudio(const FString& Base64Mp3)
         UE_LOG(LogCompanionService, Warning, TEXT("Failed to decode audio_chunk MP3 payload"));
         return;
     }
+    Clip.SentenceIndex = SentenceIndex;
 
     // Be tolerant of a service that starts sending audio before its
     // state_change("speaking") notification reaches this client.
@@ -331,6 +334,7 @@ void UCompanionServiceSubsystem::PlayNextQueuedAudio()
 
     FQueuedAudioClip Clip = MoveTemp(AudioQueue[0]);
     AudioQueue.RemoveAt(0);
+    ActiveClipSentenceIndex = Clip.SentenceIndex;
 
     UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
     if (!World)
@@ -402,6 +406,7 @@ void UCompanionServiceSubsystem::FeedLipSyncAudioTick()
 void UCompanionServiceSubsystem::HandleQueuedAudioFinished()
 {
     ActiveAudioComponent = nullptr;
+    OnSentenceAudioFinished.Broadcast(ActiveClipSentenceIndex);
     PlayNextQueuedAudio();
     TryBroadcastLLMFinishedTalking();
 }

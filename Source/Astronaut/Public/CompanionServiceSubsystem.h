@@ -16,6 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnReplyTextReceived, const FString
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnGestureReceived, const FString&, Tag, int32, SentenceIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnConnectionStatusChanged, bool, bOnline);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLLMFinishedTalking);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSentenceAudioFinished, int32, SentenceIndex);
 
 /**
  * WebSocket client for the Moonwalkers Holobox companion service
@@ -120,6 +121,15 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Companion Service")
     FOnLLMFinishedTalking OnLLMFinishedTalking;
 
+    /**
+     * Fires each time one sentence's audio clip finishes playing locally,
+     * carrying that sentence's index. Unlike OnLLMFinishedTalking (whole
+     * reply), this lets UI (e.g. captions) stay paced to what's actually
+     * audible sentence-by-sentence instead of a fixed timer.
+     */
+    UPROPERTY(BlueprintAssignable, Category = "Companion Service")
+    FOnSentenceAudioFinished OnSentenceAudioFinished;
+
 private:
     TSharedPtr<IWebSocket> Socket;
     FTimerHandle ReconnectTimerHandle;
@@ -143,12 +153,17 @@ private:
         TArray<uint8> Pcm16Bytes;
         int32 SampleRate = 0;
         int32 NumChannels = 0;
+        int32 SentenceIndex = 0;
     };
 
     TArray<FQueuedAudioClip> AudioQueue;
 
     UPROPERTY()
     TObjectPtr<UAudioComponent> ActiveAudioComponent = nullptr;
+
+    // Sentence index of the clip ActiveAudioComponent is currently playing,
+    // so HandleQueuedAudioFinished knows which sentence just finished.
+    int32 ActiveClipSentenceIndex = 0;
 
     FTimerHandle NextClipTimerHandle;
     FTimerHandle LipSyncFeedTimerHandle;
@@ -168,7 +183,7 @@ private:
     bool bServerFinishedLLMTurn = false;
     bool bReceivedAudioForLLMTurn = false;
 
-    void PlayReceivedAudio(const FString& Base64Mp3);
+    void PlayReceivedAudio(const FString& Base64Mp3, int32 SentenceIndex);
     void PlayNextQueuedAudio();
     void FeedLipSyncAudioTick();
     void TryBroadcastLLMFinishedTalking();
