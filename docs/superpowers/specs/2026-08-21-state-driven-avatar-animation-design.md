@@ -34,8 +34,10 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gestures")
 TObjectPtr<UAnimMontage> ListeningMontage;   // AS_Listening_Montage
 
 UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gestures")
-TObjectPtr<UAnimMontage> ThinkingMontage;    // AS_Thinking_Montage
+TObjectPtr<UAnimMontage> ThinkingStateMontage;    // AS_Thinking_Montage
 ```
+
+Note: `ThinkingMontage` already exists on the component as the *gesture-tag* montage (`Thinking` is one of the 6 vocabulary tags, played when the LLM emits it mid-sentence while already talking). That's a different trigger moment from the new avatar-state `"thinking"` (waiting for the LLM/RAG response, before any talking starts), so the new property is named `ThinkingStateMontage` to avoid reusing — and conflating — an existing, differently-purposed property. Both may end up pointing at the same `AS_Thinking_Montage` asset in the editor, or not — that's an editor-time choice, not a code one.
 
 ### New state
 
@@ -66,7 +68,7 @@ elif State == "listening":
     PlayLoopingStateMontage(ListeningMontage, State)
 elif State == "thinking":
     IdleAnimComponent->StopIdleLoop()
-    PlayLoopingStateMontage(ThinkingMontage, State)
+    PlayLoopingStateMontage(ThinkingStateMontage, State)
 elif State == "talking":
     IdleAnimComponent->StopIdleLoop()
     PlayRandomTalkingLoopClip()
@@ -90,13 +92,13 @@ No special code path. The server always sends a fresh `listening` state on a new
 
 ### Failure mode
 
-If `ListeningMontage` or `ThinkingMontage` isn't assigned, log a warning (matching `PlayGesture`'s existing "No AnimMontage assigned" pattern) and skip — no crash.
+If `ListeningMontage` or `ThinkingStateMontage` isn't assigned, log a warning (matching `PlayGesture`'s existing "No AnimMontage assigned" pattern) and skip — no crash.
 
 ## Testing
 
 No automated test harness exists for Blueprint/animation behavior in this project; verification is manual in PIE, per existing project convention (see prior session's caption-fix and gesture-montage verification, both confirmed via live PIE + log inspection). Plan:
 
-1. Compile, assign `ListeningMontage`/`ThinkingMontage` in the editor, save.
+1. Compile, assign `ListeningMontage`/`ThinkingStateMontage` in the editor, save.
 2. PIE: press push-to-talk → confirm Listening montage plays and loops while held.
 3. Release → confirm Thinking montage plays and loops until a reply starts.
 4. Confirm Talkingloop/Talking2Loop alternate randomly while the reply speaks.
