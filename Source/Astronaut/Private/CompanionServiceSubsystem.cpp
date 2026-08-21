@@ -230,6 +230,23 @@ void UCompanionServiceSubsystem::HandleMessage(const FString& MessageString)
         {
             StopAndClearAudioQueue();
         }
+        else if (State == TEXT("thinking") || State == TEXT("speaking"))
+        {
+            // "thinking" starts the reply turn. Keep the same turn alive when
+            // it advances to "speaking" so streamed sentence clips count as
+            // one answer rather than separate completion events.
+            if (!bLLMTurnInProgress)
+            {
+                bLLMTurnInProgress = true;
+                bReceivedAudioForLLMTurn = false;
+            }
+            bServerFinishedLLMTurn = false;
+        }
+        else if (State == TEXT("idle") && bLLMTurnInProgress)
+        {
+            bServerFinishedLLMTurn = true;
+            TryBroadcastLLMFinishedTalking();
+        }
         OnAvatarStateChange.Broadcast(State);
     }
     else if (Type == TEXT("transcript"))
@@ -289,6 +306,11 @@ void UCompanionServiceSubsystem::PlayReceivedAudio(const FString& Base64Mp3)
         UE_LOG(LogCompanionService, Warning, TEXT("Failed to decode audio_chunk MP3 payload"));
         return;
     }
+
+    // Be tolerant of a service that starts sending audio before its
+    // state_change("speaking") notification reaches this client.
+    bLLMTurnInProgress = true;
+    bReceivedAudioForLLMTurn = true;
 
     const bool bWasIdle = (AudioQueue.Num() == 0 && ActiveAudioComponent == nullptr);
     AudioQueue.Add(MoveTemp(Clip));
@@ -381,6 +403,25 @@ void UCompanionServiceSubsystem::HandleQueuedAudioFinished()
 {
     ActiveAudioComponent = nullptr;
     PlayNextQueuedAudio();
+    TryBroadcastLLMFinishedTalking();
+}
+
+void UCompanionServiceSubsystem::TryBroadcastLLMFinishedTalking()
+{
+    if (!bLLMTurnInProgress || !bServerFinishedLLMTurn || !bReceivedAudioForLLMTurn ||
+        ActiveAudioComponent || AudioQueue.Num() > 0)
+    {
+        return;
+    }
+
+    // Reset before broadcasting so a Blueprint listener that immediately
+    // starts another turn cannot cause this reply to complete a second time.
+    bLLMTurnInProgress = false;
+    bServerFinishedLLMTurn = false;
+    bReceivedAudioForLLMTurn = false;
+
+    UE_LOG(LogCompanionService, Log, TEXT("LLM reply finished playing"));
+    OnLLMFinishedTalking.Broadcast();
 }
 
 void UCompanionServiceSubsystem::StopAndClearAudioQueue()
@@ -401,4 +442,8 @@ void UCompanionServiceSubsystem::StopAndClearAudioQueue()
 
     ActiveClipLipSyncPcm16.Reset();
     LipSyncFeedByteOffset = 0;
+
+    bLLMTurnInProgress = false;
+    bServerFinishedLLMTurn = false;
+    bReceivedAudioForLLMTurn = false;
 }

@@ -15,6 +15,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTranscriptReceived, const FString
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnReplyTextReceived, const FString&, Text, int32, SentenceIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnGestureReceived, const FString&, Tag, int32, SentenceIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnConnectionStatusChanged, bool, bOnline);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLLMFinishedTalking);
 
 /**
  * WebSocket client for the Moonwalkers Holobox companion service
@@ -111,6 +112,14 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Companion Service")
     FOnConnectionStatusChanged OnConnectionStatusChanged;
 
+    /**
+     * Fires once after the complete LLM reply has finished playing locally.
+     * It does not fire when playback is interrupted by a new listening turn
+     * or by EndConversation().
+     */
+    UPROPERTY(BlueprintAssignable, Category = "Companion Service")
+    FOnLLMFinishedTalking OnLLMFinishedTalking;
+
 private:
     TSharedPtr<IWebSocket> Socket;
     FTimerHandle ReconnectTimerHandle;
@@ -152,9 +161,17 @@ private:
     int32 ActiveClipLipSyncNumChannels = 0;
     int32 LipSyncFeedByteOffset = 0;
 
+    // The service can stream several sentence clips for one reply. Waiting
+    // for its final idle state as well as an empty local queue prevents the
+    // completion event from firing in a short gap between sentence clips.
+    bool bLLMTurnInProgress = false;
+    bool bServerFinishedLLMTurn = false;
+    bool bReceivedAudioForLLMTurn = false;
+
     void PlayReceivedAudio(const FString& Base64Mp3);
     void PlayNextQueuedAudio();
     void FeedLipSyncAudioTick();
+    void TryBroadcastLLMFinishedTalking();
 
     UFUNCTION()
     void HandleQueuedAudioFinished();
