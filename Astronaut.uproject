@@ -19,14 +19,6 @@
 			]
 		},
 		{
-			"Name": "ModelContextProtocol",
-			"Enabled": true
-		},
-		{
-			"Name": "AllToolsets",
-			"Enabled": true
-		},
-		{
 			"Name": "AudioCapture",
 			"Enabled": true
 		},
@@ -112,6 +104,19 @@
 		},
 		{
 			"Name": "MetaHumanRuntime",
+			"Enabled": true
+		},
+		{
+			"Name": "MetaHumanBodyTracker",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
+			"Name": "CelestialVault",
 			"Enabled": true
 		}
 	]
