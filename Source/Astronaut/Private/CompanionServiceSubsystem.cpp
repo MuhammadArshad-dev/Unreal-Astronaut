@@ -158,11 +158,19 @@ void UCompanionServiceSubsystem::BeginListening()
         return;
     }
 
+    bIsPrimed = false;
     bIsListening = true;
 
     TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
     Json->SetStringField(TEXT("type"), TEXT("session_start"));
     SendJson(Json);
+
+    if (PreRollBuffer.Num() > 0)
+    {
+        TArray<uint8> Flushed = MoveTemp(PreRollBuffer);
+        PreRollBuffer.Reset();
+        SendAudioChunk(Flushed);
+    }
 }
 
 void UCompanionServiceSubsystem::EndListening()
@@ -178,6 +186,18 @@ void UCompanionServiceSubsystem::EndListening()
     SendJson(Json);
 }
 
+void UCompanionServiceSubsystem::BeginPriming()
+{
+    bIsPrimed = true;
+    PreRollBuffer.Reset();
+}
+
+void UCompanionServiceSubsystem::EndPriming()
+{
+    bIsPrimed = false;
+    PreRollBuffer.Reset();
+}
+
 void UCompanionServiceSubsystem::EndConversation()
 {
     bIsListening = false;
@@ -190,7 +210,25 @@ void UCompanionServiceSubsystem::EndConversation()
 
 void UCompanionServiceSubsystem::SendAudioChunk(const TArray<uint8>& PCM16Data)
 {
-    if (!bIsListening || !bIsConnected || PCM16Data.Num() == 0)
+    if (PCM16Data.Num() == 0)
+    {
+        return;
+    }
+
+    if (!bIsListening)
+    {
+        if (bIsPrimed)
+        {
+            const int32 AppendCount = FMath::Min(MaxPreRollBytes - PreRollBuffer.Num(), PCM16Data.Num());
+            if (AppendCount > 0)
+            {
+                PreRollBuffer.Append(PCM16Data.GetData(), AppendCount);
+            }
+        }
+        return;
+    }
+
+    if (!bIsConnected)
     {
         return;
     }

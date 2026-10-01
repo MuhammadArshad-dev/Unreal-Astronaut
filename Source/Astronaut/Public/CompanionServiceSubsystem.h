@@ -68,7 +68,7 @@ public:
     /**
      * Push-to-talk pressed: sends session_start (this also doubles as the
      * protocol's interrupt signal if the avatar is mid-turn) and opens the
-     * audio_chunk stream.
+     * audio_chunk stream. Also flushes any audio buffered since BeginPriming().
      */
     UFUNCTION(BlueprintCallable, Category = "Companion Service")
     void BeginListening();
@@ -76,6 +76,14 @@ public:
     /** Push-to-talk released: stops streaming audio_chunk and sends push_to_talk_released. */
     UFUNCTION(BlueprintCallable, Category = "Companion Service")
     void EndListening();
+
+    /** Starts buffering captured audio locally (nothing is sent) until BeginListening() or EndPriming(). */
+    UFUNCTION(BlueprintCallable, Category = "Companion Service")
+    void BeginPriming();
+
+    /** Discards buffered audio without sending it — for holds released before the send threshold. */
+    UFUNCTION(BlueprintCallable, Category = "Companion Service")
+    void EndPriming();
 
     /** Visitor-initiated end of conversation (US-7) — clears server-side history, returns avatar to idle. */
     UFUNCTION(BlueprintCallable, Category = "Companion Service")
@@ -139,6 +147,11 @@ private:
     // apart raced two TCP connections against the server's single-client
     // slot, which then fought each other indefinitely via auto-reconnect).
     bool bIsConnecting = false;
+
+    // Capped at ~1s of 16kHz mono PCM16 as a safety net.
+    bool bIsPrimed = false;
+    TArray<uint8> PreRollBuffer;
+    static constexpr int32 MaxPreRollBytes = 32000;
 
     void HandleConnected();
     void HandleConnectionError(const FString& Error);
